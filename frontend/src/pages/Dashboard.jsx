@@ -51,6 +51,12 @@ const Dashboard = ({ onViewChange }) => {
   const [editGuests, setEditGuests] = useState(2);
   const [editTableId, setEditTableId] = useState('');
 
+  // Table Edit states
+  const [editingTable, setEditingTable] = useState(null);
+  const [editTableNumber, setEditTableNumber] = useState('');
+  const [editTableCapacity, setEditTableCapacity] = useState(4);
+  const [editTableActive, setEditTableActive] = useState(true);
+
   // Time Slots definition
   const slots = [
     '12:00-13:30',
@@ -63,7 +69,9 @@ const Dashboard = ({ onViewChange }) => {
   // Fetch all tables
   const fetchTables = async () => {
     try {
-      const res = await fetch('/api/tables', {
+      const isAdmin = user?.role === 'admin';
+      const url = isAdmin ? '/api/tables?all=true' : '/api/tables';
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -316,6 +324,51 @@ const Dashboard = ({ onViewChange }) => {
     }
   };
 
+  // Table Edit handlers
+  const handleStartEditTable = (table) => {
+    setEditingTable(table);
+    setEditTableNumber(table.tableNumber);
+    setEditTableCapacity(table.capacity);
+    setEditTableActive(table.isActive);
+    setErrorMsg('');
+    setSuccessMsg('');
+  };
+
+  const handleSaveEditTable = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+    if (!editingTable) return;
+
+    try {
+      const res = await fetch(`/api/tables/${editingTable._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          tableNumber: editTableNumber,
+          capacity: parseInt(editTableCapacity),
+          isActive: editTableActive
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccessMsg(`Table "${editTableNumber}" updated successfully.`);
+        setEditingTable(null);
+        fetchTables();
+        if (user?.role === 'admin') {
+          fetchAllReservations(adminFilterDate);
+        }
+      } else {
+        setErrorMsg(data.error || 'Failed to update table.');
+      }
+    } catch (err) {
+      setErrorMsg('Server connection failed.');
+    }
+  };
+
   const handleAdminFilterChange = (e) => {
     const filterVal = e.target.value;
     setAdminFilterDate(filterVal);
@@ -325,6 +378,43 @@ const Dashboard = ({ onViewChange }) => {
   const handleLogout = () => {
     logout();
     onViewChange('login');
+  };
+
+  const renderChairs = (capacity, isOccupied, isSelected) => {
+    const chairs = [];
+    const radius = 34; // distance from center of table in percentage
+    for (let i = 0; i < capacity; i++) {
+      const angle = (i * 2 * Math.PI) / capacity - Math.PI / 2; // offset by 90deg to start from top
+      const x = Math.round(50 + Math.cos(angle) * radius);
+      const y = Math.round(50 + Math.sin(angle) * radius);
+      
+      let chairColor = 'rgba(255, 255, 255, 0.15)'; // available default
+      if (isOccupied) {
+        chairColor = 'rgba(166, 159, 149, 0.1)'; // occupied dim
+      } else if (isSelected) {
+        chairColor = 'var(--color-primary)'; // selected gold
+      }
+      
+      chairs.push(
+        <div 
+          key={i} 
+          style={{
+            position: 'absolute',
+            left: `${x}%`,
+            top: `${y}%`,
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            backgroundColor: chairColor,
+            border: isSelected ? '1px solid var(--text-main)' : '1px solid rgba(255,255,255,0.08)',
+            transform: 'translate(-50%, -50%)',
+            transition: 'all 0.3s ease',
+            animation: isSelected ? 'pulse-selected 2s infinite ease-in-out' : 'none'
+          }}
+        />
+      );
+    }
+    return chairs;
   };
 
   return (
@@ -565,53 +655,154 @@ const Dashboard = ({ onViewChange }) => {
             ) : (
               /* Manage Tables view */
               <div className="dashboard-grid">
-                {/* Left side: Add Table */}
+                {/* Left side: Add Table or Edit Table */}
                 <div className="card">
-                  <h3>Add Restaurant Table</h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-                    Introduce a new table with custom seating capacities.
-                  </p>
-                  <form onSubmit={handleCreateTable}>
-                    <div className="form-group">
-                      <label>Table Identification</label>
-                      <input 
-                        type="text"
-                        className="form-control"
-                        placeholder="e.g. Table 9 (4 Seats)"
-                        value={newTableNum}
-                        onChange={(e) => setNewTableNum(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Seating Capacity</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        value={newTableCap}
-                        onChange={(e) => setNewTableCap(e.target.value)}
-                        min={1}
-                        max={20}
-                        required
-                      />
-                    </div>
-                    <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
-                      <Plus size={16} /> Create Table
-                    </button>
-                  </form>
+                  {editingTable ? (
+                    <>
+                      <h3>Edit Table: {editingTable.tableNumber}</h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                        Modify details or toggle active/inactive status.
+                      </p>
+                      <form onSubmit={handleSaveEditTable}>
+                        <div className="form-group">
+                          <label>Table Number / Name</label>
+                          <input 
+                            type="text"
+                            className="form-control"
+                            value={editTableNumber}
+                            onChange={(e) => setEditTableNumber(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Seating Capacity</label>
+                          <input 
+                            type="number"
+                            className="form-control"
+                            value={editTableCapacity}
+                            onChange={(e) => setEditTableCapacity(e.target.value)}
+                            min={1}
+                            max={20}
+                            required
+                          />
+                        </div>
+                        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                          <input 
+                            type="checkbox"
+                            id="editTableActive"
+                            checked={editTableActive}
+                            onChange={(e) => setEditTableActive(e.target.checked)}
+                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                          />
+                          <label htmlFor="editTableActive" style={{ marginBottom: 0, cursor: 'pointer' }}>Active (Show in booking screen)</label>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: '0.6rem' }}>
+                            Save Table
+                          </button>
+                          <button type="button" className="btn btn-secondary" onClick={() => setEditingTable(null)} style={{ flex: 1, padding: '0.6rem' }}>
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    <>
+                      <h3>Add Restaurant Table</h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                        Introduce a new table with custom seating capacities.
+                      </p>
+                      <form onSubmit={handleCreateTable}>
+                        <div className="form-group">
+                          <label>Table Identification</label>
+                          <input 
+                            type="text"
+                            className="form-control"
+                            placeholder="e.g. Table 9 (4 Seats)"
+                            value={newTableNum}
+                            onChange={(e) => setNewTableNum(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Seating Capacity</label>
+                          <input 
+                            type="number"
+                            className="form-control"
+                            value={newTableCap}
+                            onChange={(e) => setNewTableCap(e.target.value)}
+                            min={1}
+                            max={20}
+                            required
+                          />
+                        </div>
+                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
+                          <Plus size={16} /> Create Table
+                        </button>
+                      </form>
+                    </>
+                  )}
                 </div>
 
                 {/* Right side: Table utilization lists */}
                 <div className="card">
                   <h3>Restaurant Table Seating Layout</h3>
-                  <div className="tables-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', marginTop: '1.5rem' }}>
-                    {tables.map((t) => (
-                      <div key={t._id} className="table-select-card" style={{ cursor: 'default' }}>
-                        <div className="table-icon">🪑</div>
-                        <span className="table-num">{t.tableNumber}</span>
-                        <span className="table-cap">Capacity: {t.capacity}</span>
-                      </div>
-                    ))}
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                    Select a table below to edit its configuration or toggle active/inactive status.
+                  </p>
+                  <div className="tables-grid">
+                    {tables.map((t) => {
+                      const isSelected = editingTable?._id === t._id;
+                      return (
+                        <div 
+                          key={t._id} 
+                          className={`table-select-card ${isSelected ? 'selected' : ''} ${!t.isActive ? 'occupied' : ''}`} 
+                          onClick={() => handleStartEditTable(t)}
+                          style={{
+                            minHeight: '140px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            padding: '1.25rem 0.5rem 0.75rem'
+                          }}
+                        >
+                          <div style={{
+                            position: 'relative',
+                            width: '74px',
+                            height: '74px',
+                            marginBottom: '0.75rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            <div style={{
+                              width: t.capacity <= 3 ? '40px' : '50px',
+                              height: t.capacity <= 3 ? '40px' : '40px',
+                              borderRadius: t.capacity <= 3 ? '50%' : '6px',
+                              backgroundColor: isSelected ? 'var(--color-primary-glow)' : 'var(--bg-main)',
+                              border: isSelected ? '2px solid var(--color-primary)' : '1px solid var(--border-color)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.85rem',
+                              fontWeight: 'bold',
+                              transition: 'all 0.3s ease',
+                              boxShadow: isSelected ? '0 0 12px var(--color-primary-glow)' : 'none',
+                              color: isSelected ? 'var(--color-primary)' : 'var(--text-main)',
+                              zIndex: 2
+                            }}>
+                              {t.isActive ? t.capacity : '🚫'}
+                            </div>
+                            {renderChairs(t.capacity, !t.isActive, isSelected)}
+                          </div>
+                          <span className="table-num" style={{ fontSize: '0.85rem', fontWeight: 600 }}>{t.tableNumber}</span>
+                          <span className="table-cap" style={{ fontSize: '0.7rem' }}>
+                            {t.isActive ? `Capacity: ${t.capacity}` : 'Inactive'}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -723,17 +914,55 @@ const Dashboard = ({ onViewChange }) => {
                               if (isOccupied) return;
                               setSelectedTable(t);
                             }}
-                            style={isUnderCapacity ? { borderColor: 'rgba(166, 159, 149, 0.3)', opacity: 0.8 } : {}}
+                            style={{
+                              ...(isUnderCapacity ? { borderColor: 'rgba(166, 159, 149, 0.3)', opacity: 0.8 } : {}),
+                              minHeight: '140px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              padding: '1.25rem 0.5rem 0.75rem'
+                            }}
                           >
-                            <div className="table-icon">
-                              {isOccupied ? '❌' : isSelected ? '✓' : '🪑'}
+                            {/* Animated Physical Table & Chairs Representation */}
+                            <div style={{
+                              position: 'relative',
+                              width: '74px',
+                              height: '74px',
+                              marginBottom: '0.75rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}>
+                              {/* Physical Table Top */}
+                              <div style={{
+                                width: t.capacity <= 3 ? '40px' : '50px',
+                                height: t.capacity <= 3 ? '40px' : '40px',
+                                borderRadius: t.capacity <= 3 ? '50%' : '6px',
+                                backgroundColor: isSelected ? 'var(--color-primary-glow)' : 'var(--bg-main)',
+                                border: isSelected ? '2px solid var(--color-primary)' : '1px solid var(--border-color)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.85rem',
+                                fontWeight: 'bold',
+                                transition: 'all 0.3s ease',
+                                boxShadow: isSelected ? '0 0 12px var(--color-primary-glow)' : 'none',
+                                color: isSelected ? 'var(--color-primary)' : 'var(--text-main)',
+                                zIndex: 2
+                              }}>
+                                {isOccupied ? '❌' : isSelected ? '✓' : t.capacity}
+                              </div>
+                              {/* Chairs */}
+                              {renderChairs(t.capacity, isOccupied, isSelected)}
                             </div>
-                            <span className="table-num">{t.tableNumber}</span>
-                            <span className="table-cap">Capacity: {t.capacity}</span>
-                            {isUnderCapacity && !isOccupied && (
-                              <span style={{ fontSize: '0.65rem', color: 'var(--status-cancelled)', display: 'block', marginTop: '0.2rem' }}>
-                                Too Small
+                            <span className="table-num" style={{ fontSize: '0.85rem', fontWeight: 600 }}>{t.tableNumber}</span>
+                            {isUnderCapacity && !isOccupied ? (
+                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.2rem', fontStyle: 'italic' }}>
+                                (Cap: {t.capacity} - Too Small)
                               </span>
+                            ) : (
+                              <span className="table-cap" style={{ fontSize: '0.7rem' }}>Capacity: {t.capacity}</span>
                             )}
                           </div>
                         );
