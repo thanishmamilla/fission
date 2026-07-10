@@ -110,15 +110,3 @@ On first startup, the database is auto-seeded with the following credentials:
 * **Customer**: `customer@restaurant.com` / `customer123`
 
 ---
-
-## Known Limitations
-1. **Fixed Time Slots**: Dynamic or customized booking start times are not supported.
-2. **Single Table Bookings**: A large guest group cannot book multiple adjacent tables under a single reservation; they must find a table matching their size or make separate bookings.
-3. **No Automatic Re-Assignment**: If a table is deactivated, reservations mapped to it are not automatically shifted or alerted.
-
----
-
-## Areas for Improvement with Additional Time
-1. **Dynamic Seating Optimizer**: Algorithmic suggestion of tables or grouping multiple tables automatically for large guest reservations.
-2. **User Notifications**: Email alerts (using SendGrid/Nodemailer) or SMS reminders when a reservation is made, updated, or cancelled.
-3. **Interactive Table Map**: A visual floor map diagram where guests can tap on specific tables in a graphic layout rather than a generic grid card layout.
