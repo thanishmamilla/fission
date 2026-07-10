@@ -382,7 +382,7 @@ const Dashboard = ({ onViewChange }) => {
 
   const renderChairs = (capacity, isOccupied, isSelected) => {
     const chairs = [];
-    const radius = 34; // distance from center of table in percentage
+    const radius = 42; // distance from center of table in percentage
     for (let i = 0; i < capacity; i++) {
       const angle = (i * 2 * Math.PI) / capacity - Math.PI / 2; // offset by 90deg to start from top
       const x = Math.round(50 + Math.cos(angle) * radius);
